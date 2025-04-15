@@ -1,55 +1,536 @@
-name: DeepSeek Auto-Code Updates
+name: DeepSeek Auto-Code Implementation
+
 on:
-  workflow_dispatch:  # Manually trigger the workflow
-  schedule:
-    - cron: '0 * * * *'  # Runs daily at midnight
+  workflow_dispatch:
+  push:
+    branches: [ main ]
 
 jobs:
-  deepseek-updates:
+  implement-changes:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+        
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        
+    - name: Create new branch
+      run: |
+        git checkout -b auto-code-overhaul-$(date +%Y%m%d%H%M%S)
+        
+    - name: Implement new structure
+      run: |
+        # Remove all existing files except .git and .github
+        find . -mindepth 1 -maxdepth 1 ! -name '.git' ! -name '.github' -exec rm -rf {} +
+        
+        # Create directory structure
+        mkdir -p src/{components,services} public .github/workflows
+        
+        # Create App.js
+        cat > src/App.js << 'EOF'
+        import React, { useState, useEffect } from 'react';
+        import FoodForm from './components/FoodForm';
+        import FoodList from './components/FoodList';
+        import NutritionChart from './components/NutritionChart';
+        import Dashboard from './components/Dashboard';
+        import { getFoodEntries, saveFoodEntry, deleteFoodEntry } from './services/storage';
 
-      - name: Install jq (JSON parser)
-        run: sudo apt-get install jq -y
+        function App() {
+          const [entries, setEntries] = useState([]);
+          const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
-      - name: Generate code with DeepSeek API
-        env:
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-        run: |
-          # Define your code-generation prompt
-          PROMPT="Deepseek Auto-update"
+          useEffect(() => {
+            const loadedEntries = getFoodEntries(selectedDate);
+            setEntries(loadedEntries);
+          }, [selectedDate]);
 
-          # Fetch the current code
-          CURRENT_CODE=$(cat app.py)
+          const handleAddEntry = (entry) => {
+            const newEntries = [...entries, entry];
+            setEntries(newEntries);
+            saveFoodEntry(entry, selectedDate);
+          };
 
-          # Call DeepSeek API (hypothetical example – adapt to actual API)
-          RESPONSE=$(curl -s -X POST "https://api.deepseek.com/v1/suggestions" \
-            -H "Authorization: Bearer $DEEPSEEK_API_KEY" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "prompt": "'"$PROMPT"'",
-              "code": "'"$CURRENT_CODE"'",
-              "language": "python"
-            }')
+          const handleDeleteEntry = (id) => {
+            const updatedEntries = entries.filter(entry => entry.id !== id);
+            setEntries(updatedEntries);
+            deleteFoodEntry(id, selectedDate);
+          };
 
-          # Extract the suggested code from the response
-          SUGGESTED_CODE=$(echo "$RESPONSE" | jq -r '.suggested_code')
+          return (
+            <div className="container mx-auto px-4 py-8">
+              <h1 className="text-3xl font-bold text-center mb-8">FoodSnap Tracker</h1>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="lg:col-span-1">
+                  <FoodForm onAddEntry={handleAddEntry} selectedDate={selectedDate} setSelectedDate={setSelectedDate} />
+                  <FoodList entries={entries} onDeleteEntry={handleDeleteEntry} />
+                </div>
+                <div className="lg:col-span-2">
+                  <Dashboard entries={entries} />
+                  <NutritionChart entries={entries} />
+                </div>
+              </div>
+            </div>
+          );
+        }
 
-          # Overwrite app.py with the new code
-          echo "$SUGGESTED_CODE" > app.py
+        export default App;
+        EOF
 
-      - name: Commit changes
-        run: |
-          git config --global user.name "DeepSeek Bot"
-          git config --global user.email "bot@deepseek.com"
-          git add .
-          git commit -m "Auto-fix by DeepSeek"
+        # Create FoodForm.js
+        cat > src/components/FoodForm.js << 'EOF'
+        import React, { useState } from 'react';
 
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v5
-        with:
-          title: "DeepSeek Code Fixes"
-          branch: "deepseek-auto-fix"
-          body: "Automated code improvements by DeepSeek AI."
+        const FoodForm = ({ onAddEntry, selectedDate, setSelectedDate }) => {
+          const [food, setFood] = useState('');
+          const [calories, setCalories] = useState('');
+          const [protein, setProtein] = useState('');
+          const [carbs, setCarbs] = useState('');
+          const [fats, setFats] = useState('');
+          const [mealType, setMealType] = useState('breakfast');
+
+          const handleSubmit = (e) => {
+            e.preventDefault();
+            if (!food || !calories) return;
+
+            const newEntry = {
+              id: Date.now(),
+              food,
+              calories: parseInt(calories),
+              protein: protein ? parseInt(protein) : 0,
+              carbs: carbs ? parseInt(carbs) : 0,
+              fats: fats ? parseInt(fats) : 0,
+              mealType,
+              date: selectedDate
+            };
+
+            onAddEntry(newEntry);
+            resetForm();
+          };
+
+          const resetForm = () => {
+            setFood('');
+            setCalories('');
+            setProtein('');
+            setCarbs('');
+            setFats('');
+          };
+
+          return (
+            <div className="bg-white p-6 rounded-lg shadow-md mb-6">
+              <h2 className="text-xl font-semibold mb-4">Add Food Entry</h2>
+              <form onSubmit={handleSubmit}>
+                <div className="mb-4">
+                  <label className="block text-gray-700 mb-2">Date</label>
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="w-full p-2 border rounded"
+                    required
+                  />
+                </div>
+                <div className="mb-4">
+                  <label className="block text-gray-700 mb-2">Food Name</label>
+                  <input
+                    type="text"
+                    value={food}
+                    onChange={(e) => setFood(e.target.value)}
+                    className="w-full p-2 border rounded"
+                    placeholder="e.g., Chicken Breast"
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <label className="block text-gray-700 mb-2">Calories</label>
+                    <input
+                      type="number"
+                      value={calories}
+                      onChange={(e) => setCalories(e.target.value)}
+                      className="w-full p-2 border rounded"
+                      placeholder="kcal"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-gray-700 mb-2">Meal Type</label>
+                    <select
+                      value={mealType}
+                      onChange={(e) => setMealType(e.target.value)}
+                      className="w-full p-2 border rounded"
+                    >
+                      <option value="breakfast">Breakfast</option>
+                      <option value="lunch">Lunch</option>
+                      <option value="dinner">Dinner</option>
+                      <option value="snack">Snack</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-4 mb-6">
+                  <div>
+                    <label className="block text-gray-700 mb-2">Protein (g)</label>
+                    <input
+                      type="number"
+                      value={protein}
+                      onChange={(e) => setProtein(e.target.value)}
+                      className="w-full p-2 border rounded"
+                      placeholder="g"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-gray-700 mb-2">Carbs (g)</label>
+                    <input
+                      type="number"
+                      value={carbs}
+                      onChange={(e) => setCarbs(e.target.value)}
+                      className="w-full p-2 border rounded"
+                      placeholder="g"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-gray-700 mb-2">Fats (g)</label>
+                    <input
+                      type="number"
+                      value={fats}
+                      onChange={(e) => setFats(e.target.value)}
+                      className="w-full p-2 border rounded"
+                      placeholder="g"
+                    />
+                  </div>
+                </div>
+                <button
+                  type="submit"
+                  className="w-full bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600 transition"
+                >
+                  Add Entry
+                </button>
+              </form>
+            </div>
+          );
+        };
+
+        export default FoodForm;
+        EOF
+
+        # Create FoodList.js
+        cat > src/components/FoodList.js << 'EOF'
+        import React from 'react';
+
+        const FoodList = ({ entries, onDeleteEntry }) => {
+          if (entries.length === 0) {
+            return (
+              <div className="bg-white p-6 rounded-lg shadow-md">
+                <h2 className="text-xl font-semibold mb-4">Food Entries</h2>
+                <p className="text-gray-500">No entries for this day. Add some food!</p>
+              </div>
+            );
+          }
+
+          return (
+            <div className="bg-white p-6 rounded-lg shadow-md">
+              <h2 className="text-xl font-semibold mb-4">Food Entries</h2>
+              <div className="space-y-4">
+                {entries.map((entry) => (
+                  <div key={entry.id} className="border-b pb-4">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="font-medium">{entry.food}</h3>
+                        <p className="text-sm text-gray-500 capitalize">{entry.mealType}</p>
+                      </div>
+                      <button
+                        onClick={() => onDeleteEntry(entry.id)}
+                        className="text-red-500 hover:text-red-700"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-4 gap-2 mt-2 text-sm">
+                      <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                        {entry.calories} kcal
+                      </span>
+                      <span className="bg-green-100 text-green-800 px-2 py-1 rounded">
+                        P: {entry.protein}g
+                      </span>
+                      <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
+                        C: {entry.carbs}g
+                      </span>
+                      <span className="bg-orange-100 text-orange-800 px-2 py-1 rounded">
+                        F: {entry.fats}g
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        };
+
+        export default FoodList;
+        EOF
+
+        # Create NutritionChart.js
+        cat > src/components/NutritionChart.js << 'EOF'
+        import React from 'react';
+        import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+
+        const NutritionChart = ({ entries }) => {
+          if (entries.length === 0) return null;
+
+          const totalCalories = entries.reduce((sum, entry) => sum + entry.calories, 0);
+          const totalProtein = entries.reduce((sum, entry) => sum + entry.protein, 0);
+          const totalCarbs = entries.reduce((sum, entry) => sum + entry.carbs, 0);
+          const totalFats = entries.reduce((sum, entry) => sum + entry.fats, 0);
+
+          const mealData = entries.reduce((acc, entry) => {
+            if (!acc[entry.mealType]) {
+              acc[entry.mealType] = 0;
+            }
+            acc[entry.mealType] += entry.calories;
+            return acc;
+          }, {});
+
+          const pieData = [
+            { name: 'Protein', value: totalProtein },
+            { name: 'Carbs', value: totalCarbs },
+            { name: 'Fats', value: totalFats }
+          ];
+
+          const barData = Object.keys(mealData).map(mealType => ({
+            name: mealType.charAt(0).toUpperCase() + mealType.slice(1),
+            calories: mealData[mealType]
+          }));
+
+          const COLORS = ['#0088FE', '#00C49F', '#FFBB28'];
+
+          return (
+            <div className="bg-white p-6 rounded-lg shadow-md mt-6">
+              <h2 className="text-xl font-semibold mb-4">Nutrition Analysis</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <h3 className="text-lg font-medium mb-2">Macronutrient Distribution</h3>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={pieData}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          outerRadius={80}
+                          fill="#8884d8"
+                          dataKey="value"
+                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                        >
+                          {pieData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                        <Legend />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+                <div>
+                  <h3 className="text-lg font-medium mb-2">Calories by Meal Type</h3>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={barData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="calories" fill="#8884d8" name="Calories" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        };
+
+        export default NutritionChart;
+        EOF
+
+        # Create Dashboard.js
+        cat > src/components/Dashboard.js << 'EOF'
+        import React from 'react';
+
+        const Dashboard = ({ entries }) => {
+          if (entries.length === 0) return null;
+
+          const totalCalories = entries.reduce((sum, entry) => sum + entry.calories, 0);
+          const totalProtein = entries.reduce((sum, entry) => sum + entry.protein, 0);
+          const totalCarbs = entries.reduce((sum, entry) => sum + entry.carbs, 0);
+          const totalFats = entries.reduce((sum, entry) => sum + entry.fats, 0);
+
+          return (
+            <div className="bg-white p-6 rounded-lg shadow-md">
+              <h2 className="text-xl font-semibold mb-4">Daily Summary</h2>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <h3 className="text-gray-500 text-sm">Total Calories</h3>
+                  <p className="text-2xl font-bold">{totalCalories} kcal</p>
+                </div>
+                <div className="bg-green-50 p-4 rounded-lg">
+                  <h3 className="text-gray-500 text-sm">Protein</h3>
+                  <p className="text-2xl font-bold">{totalProtein}g</p>
+                </div>
+                <div className="bg-yellow-50 p-4 rounded-lg">
+                  <h3 className="text-gray-500 text-sm">Carbs</h3>
+                  <p className="text-2xl font-bold">{totalCarbs}g</p>
+                </div>
+                <div className="bg-orange-50 p-4 rounded-lg">
+                  <h3 className="text-gray-500 text-sm">Fats</h3>
+                  <p className="text-2xl font-bold">{totalFats}g</p>
+                </div>
+              </div>
+            </div>
+          );
+        };
+
+        export default Dashboard;
+        EOF
+
+        # Create storage service
+        cat > src/services/storage.js << 'EOF'
+        export const getFoodEntries = (date) => {
+          const entries = localStorage.getItem(`foodEntries-${date}`);
+          return entries ? JSON.parse(entries) : [];
+        };
+
+        export const saveFoodEntry = (entry, date) => {
+          const entries = getFoodEntries(date);
+          const updatedEntries = [...entries, entry];
+          localStorage.setItem(`foodEntries-${date}`, JSON.stringify(updatedEntries));
+        };
+
+        export const deleteFoodEntry = (id, date) => {
+          const entries = getFoodEntries(date);
+          const updatedEntries = entries.filter(entry => entry.id !== id);
+          localStorage.setItem(`foodEntries-${date}`, JSON.stringify(updatedEntries));
+        };
+        EOF
+
+        # Create index.js
+        cat > src/index.js << 'EOF'
+        import React from 'react';
+        import ReactDOM from 'react-dom/client';
+        import App from './App';
+        import './index.css';
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(
+          <React.StrictMode>
+            <App />
+          </React.StrictMode>
+        );
+        EOF
+
+        # Create index.css
+        cat > src/index.css << 'EOF'
+        @tailwind base;
+        @tailwind components;
+        @tailwind utilities;
+        EOF
+
+        # Create public/index.html
+        cat > public/index.html << 'EOF'
+        <!DOCTYPE html>
+        <html lang="en">
+          <head>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <title>FoodSnap Tracker</title>
+          </head>
+          <body>
+            <div id="root"></div>
+          </body>
+        </html>
+        EOF
+
+        # Create package.json
+        cat > package.json << 'EOF'
+        {
+          "name": "foodsnaptracker",
+          "version": "1.0.0",
+          "private": true,
+          "dependencies": {
+            "react": "^18.2.0",
+            "react-dom": "^18.2.0",
+            "recharts": "^2.8.0",
+            "tailwindcss": "^3.3.0"
+          },
+          "scripts": {
+            "start": "react-scripts start",
+            "build": "react-scripts build",
+            "test": "react-scripts test"
+          }
+        }
+        EOF
+
+        # Create CI/CD workflow
+        cat > .github/workflows/ci-cd.yml << 'EOF'
+        name: CI/CD Pipeline
+
+        on:
+          push:
+            branches: [ main ]
+          pull_request:
+            branches: [ main ]
+
+        jobs:
+          build:
+            runs-on: ubuntu-latest
+
+            steps:
+            - uses: actions/checkout@v2
+            
+            - name: Set up Node.js
+              uses: actions/setup-node@v2
+              with:
+                node-version: '16'
+                
+            - name: Install dependencies
+              run: npm install
+              
+            - name: Run tests
+              run: npm test
+              
+            - name: Build project
+              run: npm run build
+              
+            - name: Deploy to GitHub Pages
+              if: github.ref == 'refs/heads/main'
+              uses: peaceiris/actions-gh-pages@v3
+              with:
+                github_token: ${{ secrets.GITHUB_TOKEN }}
+                publish_dir: ./build
+        EOF
+
+    - name: Commit and push changes
+      run: |
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "actions@github.com"
+        git add .
+        git commit -m "Auto-implemented complete app overhaul"
+        git push origin HEAD
+        
+    - name: Create Pull Request
+      uses: peter-evans/create-pull-request@v4
+      with:
+        title: "Auto-Code Implementation: Complete App Overhaul"
+        body: "This PR contains all the automated code changes for the complete FoodSnap Tracker app implementation."
+        branch: "auto-code-overhaul"
+        base: "main"
