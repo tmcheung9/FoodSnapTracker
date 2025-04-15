@@ -1,0 +1,55 @@
+name: DeepSeek Auto-Code Updates
+on:
+  workflow_dispatch:  # Manually trigger the workflow
+  schedule:
+    - cron: '0 0 * * *'  # Runs daily at midnight
+
+jobs:
+  deepseek-updates:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install jq (JSON parser)
+        run: sudo apt-get install jq -y
+
+      - name: Generate code with DeepSeek API
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          # Define your code-generation prompt
+          PROMPT="Update coding from Deepseek"
+
+          # Fetch the current code
+          CURRENT_CODE=$(cat app.py)
+
+          # Call DeepSeek API (hypothetical example – adapt to actual API)
+          RESPONSE=$(curl -s -X POST "https://api.deepseek.com/v1/suggestions" \
+            -H "Authorization: Bearer $DEEPSEEK_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "prompt": "'"$PROMPT"'",
+              "code": "'"$CURRENT_CODE"'",
+              "language": "python"
+            }')
+
+          # Extract the suggested code from the response
+          SUGGESTED_CODE=$(echo "$RESPONSE" | jq -r '.suggested_code')
+
+          # Overwrite app.py with the new code
+          echo "$SUGGESTED_CODE" > app.py
+
+      - name: Commit changes
+        run: |
+          git config --global user.name "DeepSeek Bot"
+          git config --global user.email "bot@deepseek.com"
+          git add .
+          git commit -m "Auto-fix by DeepSeek"
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          title: "DeepSeek Code Fixes"
+          branch: "deepseek-auto-fix"
+          body: "Automated code improvements by DeepSeek AI."
