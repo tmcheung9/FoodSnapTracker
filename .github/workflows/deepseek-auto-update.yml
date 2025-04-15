@@ -2,7 +2,7 @@ name: DeepSeek Auto-Code Updates
 on:
   workflow_dispatch:  # Manually trigger the workflow
   schedule:
-    - cron: '0 0 * * *'  # Runs daily at midnight
+    - cron: '0 * * * *'  # Runs daily at midnight
 
 jobs:
   deepseek-updates:
